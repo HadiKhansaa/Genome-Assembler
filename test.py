@@ -154,8 +154,6 @@ def search(bwt, sub_string, suffix_array, c, Occ):
 
     return hit
 
-
-
 def main():
     # Get the genome sequence from the user or from a file
     genome = 'ATCACCG'
