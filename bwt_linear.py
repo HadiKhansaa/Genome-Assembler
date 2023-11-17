@@ -87,9 +87,9 @@ def index_bwt(bwt):
         c[i] = c[i - 1] + num_A
         num_A = temp
 
-    Occ = np.zeros((6, len(bwt)))
-    start = time.time()
-    for i in range(len(bwt)):
+    Occ = np.zeros((6, len(bwt) + 1), dtype=int)
+    
+    for i in range(1,len(bwt)+1):
         if i > 0:
             Occ[0][i] = Occ[0][i - 1]
             Occ[1][i] = Occ[1][i - 1]
@@ -98,17 +98,17 @@ def index_bwt(bwt):
             Occ[4][i] = Occ[4][i - 1]
             Occ[5][i] = Occ[5][i - 1]
 
-        if bwt[i] == "$" or bwt[i] == "#":
+        if bwt[i-1] == "$" or bwt[i-1] == "#":
             Occ[0][i] += 1
-        elif bwt[i] == "A":
+        elif bwt[i-1] == "A":
             Occ[1][i] += 1
-        elif bwt[i] == "C":
+        elif bwt[i-1] == "C":
             Occ[2][i] += 1
-        elif bwt[i] == "G":
+        elif bwt[i-1] == "G":
             Occ[3][i] += 1
-        elif bwt[i] == "N":
+        elif bwt[i-1] == "N":
             Occ[4][i] += 1
-        elif bwt[i] == "T":
+        elif bwt[i-1] == "T":
             Occ[5][i] += 1
     return c, Occ
 
@@ -138,8 +138,8 @@ def search_in_bwt(bwt, sub_string, c, Occ):
 
     while(sp <= ep and i >= 1):
         character = acgt_to_1234[sub_string[i - 1]]
-        sp = int(c[character] + Occ[character][sp - 1])
-        ep = int(c[character] + Occ[character][ep] - 1)
+        sp = int(c[character] + Occ[character][sp])
+        ep = int(c[character] + Occ[character][ep+1] - 1)
         i = i - 1
 
     return sp, ep
@@ -147,13 +147,59 @@ def search_in_bwt(bwt, sub_string, c, Occ):
 
 def search(bwt, sub_string, suffix_array, c, Occ):
     sp, ep = search_in_bwt(bwt, sub_string, c, Occ)
-
+    # print(f"{sub_string}: ", end="")
     hit = []
     for i in range(sp, ep + 1):
         hit.append(suffix_array[i])
+        # print(hit,end=" ")
+    # print()
 
     return hit
 
+def approxMatching(p1, p2, d):
+    error = 0
+    for i in range(len(p1)):
+        if p1[i] != p2[i]:
+            error += 1
+            if error > d:
+                return False
+    return True
+
+def findOccurrences(text, bwt, suffix_array, pattern, d, starts, counts):
+    occs = []
+    # for pattern in patterns:
+    currOccs = set()
+    n = len(pattern)
+    k = n // (d+1)
+    seeds = [(pattern[i*k:(i+1)*k], i*k) for i in range(d)] + [(pattern[d*k:n], d*k)]
+    acgt_to_1234 = {"$":0, "A":1, "C":2, "G":3, "N":4,"T":5}
+    for p, offset in seeds:
+        top = 0
+        bottom = len(bwt) - 1
+        currIndex = len(p) - 1
+        while top <= bottom:
+            if currIndex >= 0:
+                symbol = acgt_to_1234[p[currIndex]]
+                currIndex -= 1
+                if counts[symbol][bottom+1] - counts[symbol][top] > 0:
+                    top = starts[symbol] + counts[symbol][top]
+                    bottom = starts[symbol] + counts[symbol][bottom+1] - 1
+                else:
+                    break
+            else:
+                for i in range(top, bottom + 1):
+                    currOccs.add(suffix_array[i]-offset)
+                break
+    # print(f"{pattern}: ", end="")
+    for occ in currOccs:
+        if approxMatching(text[occ:occ+n], pattern, d):
+            if(occ>0):
+                occ+=1
+            occs.append(occ)
+            # print(occ,end=" ")
+    # print()
+
+    return occs
 
 ### EXAMPLES
 

@@ -5,14 +5,13 @@ import sys
 import gzip
 import time
 
-from align import getCigarFromIndex, reverse_complement
-from bwt_linear import bwt_linear, index_bwt, search, search_in_bwt
+from bwt_linear import bwt_linear, index_bwt, search, search_in_bwt,findOccurrences
 
 # Updated import to match the modified read_fq function
 from input import read_fq, read_genome
 import numpy as np
 
-from writeOutput import writeToFile
+from writeOutput import writeToFile,alignMatches, alignMismatchesWithGaps
 
 def getFlags(Read_isFwd, isMapped):
     flag = 1 + 64
@@ -44,6 +43,7 @@ def run(path, readFile, genomeFile):
 
     print("")
     bwt_txt = input("Is BWT of given genome already stored in a .txt file? If so specify its file name without the .txt ending.\n Otherwise enter anything to continue. \n")
+
     sa_txt = input("Is suffix array of given genome already stored in a .txt file? If so specify its file name without the .txt ending.\n Otherwise enter anything to continue. \n")
     print("")
 
@@ -63,6 +63,7 @@ def run(path, readFile, genomeFile):
         time_stop = time.time()
         print("Finished constructing BWT and suffix array of genome in " + str(time_stop - time_start)[0:5] + " s.\n")
 
+    start_timer = time.time()
     c, Occ = index_bwt(genome_bwt)
     min_len_seed = 5
     outputPath = path + "output_" + readFile + ".txt" #changed
@@ -82,6 +83,7 @@ def run(path, readFile, genomeFile):
     header = True
 
     all_allignments = [] #added
+    unmatched_reads = []
     for i in range(0, len(reads)):
         if i == 1:
             header = False
@@ -92,60 +94,31 @@ def run(path, readFile, genomeFile):
         seedLength = len(read_fwd)
 
         hits_fwd = search(genome_bwt, read_fwd[0:seedLength], genome_sa, c, Occ)
-        # hits_rvcmpl = search(genome_bwt, read_rvcmpl[0:seedLength], genome_sa, c, Occ)
 
-        # sp, ep = search_in_bwt(genome_bwt, read_fwd[0:seedLength], c, Occ)
-
-        # while seedLength > min_len_seed and len(hits_fwd) == 0 and len(hits_rvcmpl) == 0:
-        #     seedLength = int(seedLength / 2)
-
-        #     if seedLength < 2 * min_len_seed:
-        #         seedLength = min_len_seed
-        #     for j in range(int(len(read_fwd) / seedLength)):
-        #         hits_fwd = search(genome_bwt, read_fwd[seedLength * j:seedLength * (j + 1)], genome_sa, c, Occ)
-        #         hits_rvcmpl = search(genome_bwt, read_rvcmpl[seedLength * j:seedLength * (j + 1)], genome_sa, c, Occ)
-        #         if len(hits_fwd) != 0 or len(hits_rvcmpl) != 0:
-        #             break
-
-        # minCostRead = sys.maxsize
-        # minCigarRead = ''
-        # minPosRead = 0
-
-        # isMapped = False
-
-        # if len(hits_fwd) or len(hits_rvcmpl):
-        #     isMapped = True
-
-        # # forward and reverse complement alignment
-        # for hit in hits_fwd:
-        #     leftIndex, rightIndex = 0, len(genome)
-        #     leftIndex = max(hit - len(read_fwd), leftIndex)
-        #     rightIndex = min(hit + len(read_rvcmpl) + 1, rightIndex)
-        #     cigar, cost, index = getCigarFromIndex(read_fwd, genome[leftIndex: rightIndex])
-        #     if cost < minCostRead:
-        #         minCigarRead = cigar
-        #         minPosRead = leftIndex + index + 1  # because MAPQ index starts at 1
-        #         minCostRead = cost
-
-        # for hit in hits_rvcmpl:
-        #     leftIndex, rightIndex = 0, len(genome)
-        #     leftIndex = max(hit - len(read_rvcmpl), leftIndex)
-        #     rightIndex = min(hit + len(read_rvcmpl) + 1, rightIndex)
-        #     cigar, cost, index = getCigarFromIndex(read_rvcmpl, genome[leftIndex: rightIndex])
-        #     if cost < minCostRead:
-        #         minCigarRead = cigar
-        #         minPosRead = leftIndex + index + 1  # because MAPQ index starts at 1
-        #         minCostRead = cost
-        #         Read_isFwd = False
-
-        # flag = getFlags(Read_isFwd, isMapped)
-
-        # alignments = [str(i + 1), flag, minPosRead, minCigarRead, read_fwd, Read_isFwd, '']
+        if(len(hits_fwd) == 0):
+            unmatched_reads.append(read_fwd)
+            # mismatched_hits_fwd = findOccurrences(genome, genome_bwt, genome_sa, read_fwd, 1, c, Occ)
+        
         for hit in hits_fwd:
-            alignments = [str(i + 1), 'flag', hit + 1, 'minCigarRead', read_fwd, Read_isFwd, ''] #changed
+            alignments = [hit + 1, read_fwd] #changed
             all_allignments.append(alignments)
-    writeToFile(file, header, '', len(genome), all_allignments) #changed
 
+    # writeToFile(file, header, '', len(genome), all_allignments)
+
+    contigs, gaps = alignMatches(len(genome), all_allignments) #changed
+
+    if(len(unmatched_reads)>0 and len(gaps) > 0):
+        mismatched_hits_fwd = []
+        for i,read in enumerate(unmatched_reads):
+            print("Reprocessing with mismatches read #{} out of {}".format(i + 1, len(unmatched_reads)))
+            positions = findOccurrences(genome, genome_bwt, genome_sa, read, 1, c, Occ)
+            for pos in positions:
+                mismatched_hits_fwd.append([pos,read])
+        contigs += alignMismatchesWithGaps(mismatched_hits_fwd, gaps)
+
+    contigs, gaps = alignMatches(len(genome), contigs)
+    writeToFile(file, contigs)
+    print(f"processing time: {time.time()-start_timer}")
     file.close()
 
 
